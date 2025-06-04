@@ -63,7 +63,7 @@ const isManualScroll = ref(false);
 const duplicatedProducts = computed(() => [...products.value, ...products.value]);
 
 const getStrapiImageUrl = (url) => {
-  return url.startsWith('http') ? url : `http://localhost:1337${url}`;
+  return url.startsWith('http') ? url : `https://kind-duck-a00ba31603.strapiapp.com:${url}`;
 };
 
 const selectProduct = (product) => {
@@ -113,7 +113,7 @@ const animate = () => {
 
 onMounted(async () => {
   try {
-    const res = await fetch('http://localhost:1337/api/produits?populate=image');
+    const res = await fetch('https://kind-duck-a00ba31603.strapiapp.com/api/produits?populate=image');
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     const json = await res.json();
     
