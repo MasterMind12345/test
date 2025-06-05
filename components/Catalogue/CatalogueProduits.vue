@@ -214,15 +214,6 @@ onMounted(loadAllData);
 </script>
 
 
-
-
-
-
-
-
-
-
-
 <style scoped>
 .catalogue-container {
   max-width: 1400px;
