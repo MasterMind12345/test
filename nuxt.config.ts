@@ -1,4 +1,3 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineNuxtConfig({
@@ -12,7 +11,19 @@ export default defineNuxtConfig({
     ],
   },
 
-  modules: ['shadcn-nuxt'],
+  modules: [
+    'shadcn-nuxt',
+    '@pinia/nuxt' // Ajout du module Pinia
+  ],
+  
+  // Configuration de Pinia
+  pinia: {
+    autoImports: [
+      'defineStore', // Import automatique de defineStore
+      ['defineStore', 'definePiniaStore'], // Alias supplémentaire
+    ],
+  },
+
   shadcn: {
     /**
      * Prefix for all the imported component

@@ -17,16 +17,20 @@
               @change="filterProducts"
             >
             <span class="checkmark"></span>
-            {{ category.Nom }}
+            {{ category.Nom }} <!-- Nom des catégories -->
           </label>
         </div>
       </div>
+      <p v-if="errorCategories" class="text-red-500 text-sm mt-2">
+        {{ errorCategories }} <!-- Afficher l'erreur spécifique aux catégories si elle existe -->
+      </p>
     </div>
 
     <!-- Liste des produits filtrés -->
     <div class="products-section">
       <div class="section-header">
         <h2 class="section-title">Catalogue des produits</h2>
+        <!-- Le bouton "Voir le panier" est géré par la Navbar -->
         <div class="product-count">{{ filteredProducts.length }} produits</div>
       </div>
       
@@ -45,7 +49,7 @@
             <img
               v-if="product.image?.[0]?.url"
               :src="getStrapiImageUrl(product.image[0].url)"
-              :alt="product.Nom"
+              :alt="product.Nom" 
               class="product-image"
               loading="lazy"
             />
@@ -58,8 +62,8 @@
             <button class="quick-view-btn">Voir plus</button>
           </div>
           <div class="product-info">
-            <div class="product-category">{{ product.categorie?.Nom }}</div>
-            <h3 class="product-name">{{ product.Nom }}</h3>
+            <div class="product-category">{{ product.category?.Nom }}</div> 
+            <h3 class="product-name">{{ product.Nom }}</h3> 
             
             <div class="price-container">
               <div class="current-price">{{ product.prix }} FCFA</div>
@@ -69,7 +73,7 @@
             </div>
             
             <div class="product-actions">
-              <button class="add-to-cart-btn" @click.stop="addToCart(product)">
+              <button class="add-to-cart-btn" @click.stop="handleAddToCart(product)">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
                 </svg>
@@ -85,29 +89,61 @@
         </div>
       </div>
     </div>
+
+    <!-- Message de notification d'ajout au panier -->
+    <transition name="fade">
+      <div v-if="showNotification" 
+           class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-2 z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{{ notificationMessage }}</span>
+      </div>
+    </transition>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useCartStore } from '@/stores/cart'; 
+// navigateTo n'est plus nécessaire ici car la navigation du panier est dans Navbar.vue
 
-const categories = ref([]);
-const products = ref([]);
-const selectedCategories = ref([]);
-const loading = ref(true);
-const error = ref(null);
+// Interface pour un produit tel que reçu de l'API et adapté pour le panier
+interface ProductData {
+  id: number;
+  Nom: string; 
+  prix: number;
+  anscienPrix?: number;
+  image?: Array<{ url: string }>; // Tableau d'images avec URL
+  category?: { id: number; Nom: string }; // Catégorie du produit
+}
+
+// Initialisation du store Pinia
+const cartStore = useCartStore();
+
+const categories = ref<any[]>([]); 
+const products = ref<ProductData[]>([]); 
+const selectedCategories = ref<number[]>([]); 
+const loading = ref<boolean>(true); 
+const error = ref<string | null>(null); 
+const errorCategories = ref<string | null>(null); 
+
+// Variables pour la notification d'ajout au panier
+const showNotification = ref<boolean>(false);
+const notificationMessage = ref<string>('');
+let notificationTimeout: NodeJS.Timeout | null = null; 
 
 const STRAPI_BASE_URL = 'https://kind-duck-a00ba31603.strapiapp.com';
 const API_URL = `${STRAPI_BASE_URL}/api`;
 
 // Fonction pour récupérer l'URL complète d'une image Strapi
-const getStrapiImageUrl = (url) => {
+const getStrapiImageUrl = (url: string): string => {
   if (!url) return '';
   return url.startsWith('http') ? url : `${STRAPI_BASE_URL}${url}`;
 };
 
 // Computed pour filtrer les produits selon les catégories sélectionnées
-const filteredProducts = computed(() => {
+const filteredProducts = computed<ProductData[]>(() => {
   if (selectedCategories.value.length === 0) return products.value;
   return products.value.filter(product => {
     const categoryId = product.category?.id;
@@ -115,106 +151,168 @@ const filteredProducts = computed(() => {
   });
 });
 
-// Récupération des catégories depuis Strapi
+// Récupération des catégories depuis Strapi (sans l'objet 'attributes')
 const fetchCategories = async () => {
   try {
     const res = await fetch(`${API_URL}/categories`);
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    console.log(`Requête catégories - URL: ${API_URL}/categories, Statut: ${res.status}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Erreur HTTP lors du fetch catégories: ${res.status}, Réponse: ${errorText}`);
+      errorCategories.value = `Impossible de charger les catégories (code: ${res.status}). Vérifiez l'API Strapi.`;
+      throw new Error(`HTTP error! status: ${res.status}. Réponse: ${errorText}`);
+    }
     const json = await res.json();
-    categories.value = json.data || json;
-  } catch (err) {
+    console.log('Réponse JSON catégories:', json);
+    
+    // Assurez-vous que json.data est un tableau, sinon utilisez json comme tableau si c'est le cas
+    const categoriesData = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+
+    if (categoriesData.length === 0) {
+        console.warn('Aucune donnée de catégorie valide trouvée dans la réponse API.', json);
+        categories.value = [];
+        errorCategories.value = 'Aucune catégorie disponible ou structure de réponse API invalide.';
+        return; 
+    }
+    
+    // Mappage des catégories: Accès direct à 'Nom' sur l'objet de données principal
+    // Filtre pour n'inclure que les catégories avec un ID et un Nom valides
+    categories.value = categoriesData.map((item: any) => ({ 
+      id: item.id, 
+      Nom: item.Nom // Accès direct à 'Nom'
+    })).filter((cat: any) => cat.id !== undefined && cat.Nom); // S'assure que ID et Nom existent
+    
+    // Si après le mappage, la liste est vide, il peut y avoir un problème de structure de données
+    if (categories.value.length === 0 && categoriesData.length > 0) {
+      console.error('Les catégories ont été reçues, mais leur structure est inattendue après mappage.', categoriesData);
+      errorCategories.value = 'Les catégories ont été chargées mais les noms ou IDs sont introuvables. Vérifiez la structure de l\'API.';
+    } else {
+      errorCategories.value = null; 
+    }
+
+  }
+  catch (err: any) { 
     console.error('Erreur fetch catégories:', err);
-    error.value = 'Impossible de charger les catégories';
+    if (!errorCategories.value || errorCategories.value.includes('Impossible de charger les catégories')) { 
+      errorCategories.value = `Impossible de charger les catégories (problème réseau ou API). Détails: ${err.message || err}`;
+    }
+    throw err; 
   }
 };
 
-// Récupération des produits avec images
-const fetchProductsWithImages = async () => {
+// Récupération des produits avec images et catégories (sans l'objet 'attributes')
+const fetchProducts = async () => {
   try {
-    const res = await fetch(`${API_URL}/produits?populate=image`);
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    // Utilise 'populate[image]=true' et 'populate[category]=true' pour obtenir les données d'image et de catégorie
+    // La requête est correcte pour demander les relations
+    const res = await fetch(`${API_URL}/produits?populate[image]=true&populate[category]=true`); 
+    console.log(`Requête produits - URL: ${API_URL}/produits?populate[image]=true&populate[category]=true, Statut: ${res.status}`);
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Erreur HTTP lors du fetch produits: ${res.status}, Réponse: ${errorText}`);
+        throw new Error(`HTTP error! status: ${res.status}. Réponse: ${errorText}`);
+    }
     const json = await res.json();
-    return json.data || json;
-  } catch (err) {
-    console.error('Erreur fetch produits avec images:', err);
-    throw err;
+    console.log('Réponse JSON produits:', json);
+
+    if (!json.data || !Array.isArray(json.data)) {
+        console.error('Erreur: La réponse de l\'API produits ne contient pas un tableau de données valide.', json);
+        return []; 
+    }
+
+    // Mappage pour extraire les données de produits, en assumant une structure aplatie
+    return json.data.map((item: any) => {
+      // Accès direct aux champs du produit (Nom, prix, anscienPrix)
+      const productName = item.Nom || 'Sans nom';
+      const productPrice = item.prix ? Number(item.prix).toLocaleString() : 'N/A';
+
+      // Accès aux images: Si item.image est directement un tableau d'objets image avec 'url'
+      const images = Array.isArray(item.image) ? item.image : [];
+      const imageUrls = images.map((img: any) => ({ url: img.url })); // Assumant que l'URL est directement sur l'objet image
+
+      // Accès à la catégorie: Si item.category est directement l'objet catégorie
+      const category = item.category 
+        ? { id: item.category.id, Nom: item.category.Nom } // Accès direct aux propriétés de la catégorie
+        : null;
+
+      return {
+        id: item.id, // L'ID est toujours au niveau racine
+        Nom: productName, 
+        prix: productPrice,
+        anscienPrix: item.anscienPrix, // Accès direct
+        image: imageUrls,
+        category: category
+      };
+    });
+  } catch (err: any) {
+    console.error('Erreur fetch produits:', err);
+    throw err; 
   }
 };
 
-// Récupération des produits avec catégories (ici 'category')
-const fetchProductsWithCategories = async () => {
-  try {
-    const res = await fetch(`${API_URL}/produits?populate=category`);
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-    const json = await res.json();
-    return json.data || json;
-  } catch (err) {
-    console.error('Erreur fetch produits avec catégories:', err);
-    throw err;
-  }
-};
-
-// Fusionner les données des produits avec images et catégories
-const mergeProductsData = (productsWithImages, productsWithCategories) => {
-  return productsWithImages.map(product => {
-    const productWithCategory = productsWithCategories.find(p => p.id === product.id);
-
-    return {
-      id: product.id,
-      Nom: product.Nom,
-      prix: product.prix,
-      anscienPrix: product.anscienPrix,
-      image: product.image,
-      category: productWithCategory?.category || null
-    };
-  });
-};
 
 // Chargement complet des données au montage du composant
-const loadAllData = async () => {
+const loadAllData = async (): Promise<void> => {
   try {
     loading.value = true;
-
-    // Chargement parallèle des produits (images + catégories)
-    const [productsWithImages, productsWithCategories] = await Promise.all([
-      fetchProductsWithImages(),
-      fetchProductsWithCategories()
-    ]);
-
-    // Fusion des données
-    products.value = mergeProductsData(productsWithImages, productsWithCategories);
-
-    // Chargement des catégories séparément
-    await fetchCategories();
-
-  } catch (err) {
-    console.error('Erreur chargement données:', err);
-    error.value = err.message || 'Erreur lors du chargement des données';
+    await fetchCategories(); // Charge les catégories en premier
+    products.value = await fetchProducts(); // Charge les produits (avec images et catégories)
+  } catch (err: any) {
+    console.error('Erreur globale lors du chargement des données dans loadAllData:', err);
+    error.value = `Impossible de charger les données (problème réseau ou API). Détails: ${err.message}`;
   } finally {
     loading.value = false;
   }
 };
 
-// Fonctions interaction (exemple)
-const selectProduct = (product) => {
+const filterProducts = (): void => {
+  console.log('Catégories sélectionnées pour le filtre:', selectedCategories.value);
+};
+
+const showAddedToCartNotification = (productName: string) => {
+  if (notificationTimeout) {
+    clearTimeout(notificationTimeout);
+  }
+  notificationMessage.value = `"${productName}" a été ajouté au panier !`;
+  showNotification.value = true;
+  notificationTimeout = setTimeout(() => {
+    showNotification.value = false;
+    notificationMessage.value = '';
+    notificationTimeout = null;
+  }, 3000);
+};
+
+const handleAddToCart = (product: ProductData): void => {
+  cartStore.addItem({
+    id: product.id,
+    name: product.Nom,  
+    price: product.prix,
+    image: product.image?.[0]?.url ? getStrapiImageUrl(product.image[0].url) : undefined,
+  });
+  console.log('Produit ajouté au panier:', product.Nom); 
+  console.log('Panier actuel (items):', cartStore.items.value);
+  console.log('Panier actuel (totalPrice):', cartStore.totalPrice);
+  showAddedToCartNotification(product.Nom); 
+};
+
+// goToCartPage est maintenant dans Navbar.vue
+// const goToCartPage = () => {
+//   navigateTo('/panier'); 
+// };
+
+const selectProduct = (product: ProductData): void => {
   console.log('Produit sélectionné:', product);
 };
 
-const addToCart = (product, event) => {
-  event.stopPropagation();
-  console.log('Ajout au panier:', product);
-};
-
-const toggleWishlist = (product, event) => {
-  event.stopPropagation();
-  console.log('Wishlist:', product);
+const toggleWishlist = (product: ProductData): void => {
+  console.log('Ajout/Retrait de la Wishlist:', product.Nom); 
 };
 
 onMounted(loadAllData);
 </script>
 
-
 <style scoped>
+/* Vos styles CSS existants pour le catalogue */
 .catalogue-container {
   max-width: 1400px;
   margin: 0 auto;
@@ -527,8 +625,44 @@ input[type="checkbox"]:checked + .checkmark {
     height: 180px;
   }
   
-  .section-title {
+.section-title {
     font-size: 1.5rem;
   }
+}
+
+/* Styles pour la transition de la notification */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.5s ease-in-out;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+/* Styles pour le bouton "Voir le panier" - ces styles ne sont plus utilisés ici mais maintenus pour référence */
+.view-cart-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background-color: #3498db; 
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+  margin-left: auto; 
+}
+
+.view-cart-button:hover {
+  background-color: #2980b9;
+  transform: translateY(-2px);
+}
+
+.view-cart-button svg {
+  width: 20px;
+  height: 20px;
 }
 </style>

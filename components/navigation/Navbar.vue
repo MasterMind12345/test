@@ -17,74 +17,44 @@ const showResults = ref(false)
 const isLoading = ref(false)
 const cartCount = ref(0)
 
-// Données de démonstration (à remplacer par vos vraies données)
-const categoriesTree = ref([
-  {
-    id: 1,
-    name: "Électronique",
-    icon: Monitor,
-    count: 42,
-    isOpen: false,
-    isOpenMobile: false,
-    subcategories: [
-      {
-        id: 101,
-        name: "Téléphones",
-        isOpen: false,
-        isOpenMobile: false,
-        items: ["Smartphones", "Téléphones basiques", "Accessoires"]
-      },
-      {
-        id: 102,
-        name: "Ordinateurs",
-        isOpen: false,
-        isOpenMobile: false,
-        items: ["Portables", "Bureautique", "Composants"]
-      }
-    ]
-  },
-  {
-    id: 2,
-    name: "Cuisine",
-    icon: ChefHat,
-    count: 36,
-    isOpen: false,
-    isOpenMobile: false,
-    subcategories: [
-      {
-        id: 201,
-        name: "Ustensiles",
-        isOpen: false,
-        isOpenMobile: false,
-        items: ["Couverts", "Casseroles", "Accessoires"]
-      }
-    ]
-  }
-])
 
-const promotions = ref([
-  {
-    id: 1,
-    title: "Promotions flash",
-    icon: Flame,
-    discount: "-70%",
-    link: "/promotions"
-  },
-  {
-    id: 2,
-    title: "Nouveautés",
-    icon: Star,
-    discount: "Nouveau",
-    link: "/nouveautes"
-  },
-  {
-    id: 3,
-    title: "Meilleures ventes",
-    icon: Zap,
-    discount: "Populaire",
-    link: "/ventes"
+import { useCartStore } from '@/stores/cart'; 
+import { navigateTo } from '#app'; 
+
+const forceReloadCart = () => {
+  navigateTo('/panier');
+}
+
+console.log('Routes:', router.getRoutes()) 
+
+
+// Déclare cartStore comme un ref qui peut être null au début.
+// Cela gère le cas où le store n'est pas encore initialisé, notamment lors du SSR.
+const cartStore = ref<ReturnType<typeof useCartStore> | null>(null);
+
+// Initialise le store Pinia uniquement lorsque le composant est monté sur le client.
+// Cela évite les erreurs "Cannot read properties of undefined" liées au SSR.
+onMounted(() => {
+  cartStore.value = useCartStore();
+  // Optionnel: Logs de débogage pour voir l'état du store
+  console.log('Navbar: cartStore initialisé sur mounted:', cartStore.value);
+  if (cartStore.value) {
+    console.log('Navbar: totalItems sur mounted:', cartStore.value.totalItems);
   }
-])
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const navigateTo = (path: string) => {
   router.push(path)
@@ -142,6 +112,8 @@ const closeResults = () => {
     showResults.value = false
   }, 200)
 }
+
+
 </script>
 
 <template>
@@ -477,22 +449,23 @@ const closeResults = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <!-- Cart -->
-            <Button
-              variant="outline"
-              size="sm"
-              class="relative"
-              @click="navigateTo('/panier')"
-            >
-              <ShoppingCart class="w-5 h-5" :stroke-width="2.5" />
-              <Badge
-                v-if="cartCount > 0"
-                class="absolute -top-2 -right-2 bg-destructive hover:bg-destructive text-xs min-w-[20px] h-5 flex items-center justify-center p-0 font-semibold"
-              >
-                {{ cartCount }}
-              </Badge>
-              <span class="hidden lg:inline ml-2 text-sm">Panier</span>
-            </Button>
+    
+  
+<NuxtLink 
+  to="/panier" 
+  class="global-cart-button"
+  aria-label="panier"
+>
+  <ShoppingCart class="h-6 w-6" :stroke-width="2.5" />
+  <span v-if="cartStore?.totalItems > 0" class="cart-item-count">
+    {{ cartStore.totalItems }}
+  </span>
+</NuxtLink>
+
+
+
+
+ 
           </div>
         </div>
 
@@ -538,6 +511,89 @@ const closeResults = () => {
 <style scoped>
 .container {
   max-width: 1200px;
+}
+
+/* Styles de l'en-tête principal de la barre de navigation */
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: #f8f8f8;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: sticky; /* Rends l'en-tête "collant" en haut de la page */
+  top: 0; /* Positionne en haut */
+  z-index: 999; /* Assure que la navbar est au-dessus des autres éléments */
+}
+
+/* Style du logo de l'application */
+.app-logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #2c3e50;
+  text-decoration: none;
+}
+
+/* Styles pour les liens de navigation */
+.main-nav .nav-link {
+  margin-left: 1.5rem;
+  color: #34495e;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.main-nav .nav-link:hover {
+  color: #2c3e50;
+}
+
+/* Conteneur de l'icône du panier pour le positionnement */
+.cart-icon-container {
+  /* Pas de styles spécifiques ici, le style est sur le bouton lui-même */
+}
+
+/* Styles appliqués au composant Button (shadcn/ui) via la classe 'global-cart-button' */
+.global-cart-button {
+  background-color: #3498db; /* Couleur de fond bleue pour le bouton panier */
+  color: white; /* Couleur du texte blanc */
+  padding: 0.75rem 1rem; /* Espacement interne */
+  border-radius: 9999px; /* Forme de pilule pour le bouton */
+  display: flex; /* Utilise flexbox pour aligner l'icône et le texte */
+  align-items: center; /* Centre verticalement les éléments */
+  gap: 0.5rem; /* Espace entre l'icône et le texte */
+  cursor: pointer; /* Indique que l'élément est cliquable */
+  border: none; /* Pas de bordure par défaut (shadcn/ui Button peut avoir sa propre bordure) */
+  font-weight: 600; /* Gras pour le texte */
+  transition: background-color 0.2s ease-in-out; /* Transition douce sur le survol */
+  position: relative; /* Nécessaire pour positionner le compteur d'articles */
+}
+
+.global-cart-button:hover {
+  background-color: #2980b9; /* Couleur de fond au survol */
+}
+
+.global-cart-button svg {
+  width: 1.5rem; /* Largeur de l'icône SVG */
+  height: 1.5rem; /* Hauteur de l'icône SVG */
+}
+
+/* Styles pour le compteur d'articles dans le panier */
+.cart-item-count {
+  position: absolute; /* Positionnement absolu par rapport au bouton parent */
+  top: -8px; /* Décalage vers le haut */
+  right: -8px; /* Décalage vers la droite */
+  background-color: #e74c3c; /* Couleur de fond rouge */
+  color: white; /* Couleur du texte blanc */
+  font-size: 0.75rem; /* Taille de police plus petite */
+  font-weight: bold; /* Texte en gras */
+  border-radius: 50%; /* Forme circulaire */
+  padding: 0.25rem 0.5rem; /* Espacement interne */
+  line-height: 1; /* Assure un bon alignement vertical du texte */
+  min-width: 20px; /* Largeur minimale pour l'affichage */
+  text-align: center; /* Centre le texte */
+  display: flex; /* Utilise flexbox pour centrer le texte */
+  justify-content: center; /* Centre horizontalement le texte */
+  align-items: center; /* Centre verticalement le texte */
 }
 
 /* Custom scrollbar */
